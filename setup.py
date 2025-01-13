@@ -38,6 +38,7 @@ setup(
         'kitti_oxts = deepfusionmot.kitti_oxts:main',
         'file = deepfusionmot.file:main',
         'config = deepfusionmot.config:main',
+        'rosbag_convert = deepfusionmot.rosbag_convert:main',
         ],
     },
 )

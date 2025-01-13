@@ -40,6 +40,9 @@ class RealTimeFusionNode(Node):
 
         self.bridge = CvBridge()
 
+        # Store calibration data
+        #self.calib_data = None
+
         # Detection cache: (sec, nanosec) -> { '2d_car': np.array, ... }
         self.detection_cache = {}
 
@@ -59,6 +62,9 @@ class RealTimeFusionNode(Node):
         # ---------------------------------------------------------
         # Subscriptions for calibration + detections
         # ---------------------------------------------------------
+        #self.create_subscription(String, '/camera/calibration', self.calibration_cb, 10)
+
+        # For each category, subscribe to the 2D/3D topics with your custom message
         if 'Car' in self.cat_list:
             self.create_subscription(Float32MultiArrayStamped, '/detection_2d/car', self.detection_2d_car_cb, 10)
             self.create_subscription(Float32MultiArrayStamped, '/detection_3d/car', self.detection_3d_car_cb, 10)
@@ -79,6 +85,10 @@ class RealTimeFusionNode(Node):
     #  Synchronized Sensor Callback
     # ============================================================
     def synced_sensor_callback(self, img_msg: Image, pc_msg: PointCloud2):
+        """
+        Called when /camera/image_raw and /lidar/points arrive close in time.
+        """
+        # Print out the timestamps for debugging
         self.get_logger().info(
             f"Received synchronized Image + PointCloud2\n"
             f"  Image timestamp: sec={img_msg.header.stamp.sec}, nanosec={img_msg.header.stamp.nanosec}\n"
@@ -91,33 +101,38 @@ class RealTimeFusionNode(Node):
             self.get_logger().error(f"Failed to convert image: {e}")
             return
 
+        # Print the shape of the image for debug
         self.get_logger().info(f"Image shape: {cv_img.shape[0]} x {cv_img.shape[1]} (H x W)")
 
         self.latest_image = cv_img
         self.latest_pc = pc_msg
 
+        # Convert image timestamp to a (sec, nanosec) key
         ts_key = (img_msg.header.stamp.sec, img_msg.header.stamp.nanosec)
 
         detection_dict = self.get_nearest_detection_data(ts_key)
 
+        # Publish raw 2D detections overlay
         self.publish_raw_detections_image(cv_img, detection_dict)
+        # Then process frame for fusion + tracking
         self.process_frame(cv_img, detection_dict)
 
     # ============================================================
     #  Detection Callbacks (using Float32MultiArrayStamped)
     # ============================================================
     def detection_2d_car_cb(self, msg: Float32MultiArrayStamped):
+        # Now we can use msg.header.stamp
         ts_key = (msg.header.stamp.sec, msg.header.stamp.nanosec)
+
         arr_len = len(msg.data)
         self.get_logger().info(f"[2D_CAR] Received Float32MultiArrayStamped with {arr_len} floats, ts_key={ts_key}")
 
         if arr_len > 0:
+            # Suppose each detection is a row of 6 floats => reshape(-1, 6)
             arr = np.array(msg.data, dtype=np.float32).reshape(-1, 6)
             self.get_logger().info(f"[2D_CAR] detection array shape: {arr.shape}")
-            self.get_logger().info(f"[2D_CAR] detection data:\n{arr}")
         else:
             arr = np.empty((0, 6))
-            self.get_logger().info(f"[2D_CAR] No detections received.")
 
         if ts_key not in self.detection_cache:
             self.detection_cache[ts_key] = {}
@@ -125,16 +140,15 @@ class RealTimeFusionNode(Node):
 
     def detection_2d_ped_cb(self, msg: Float32MultiArrayStamped):
         ts_key = (msg.header.stamp.sec, msg.header.stamp.nanosec)
+
         arr_len = len(msg.data)
         self.get_logger().info(f"[2D_PED] Received Float32MultiArrayStamped with {arr_len} floats, ts_key={ts_key}")
 
         if arr_len > 0:
             arr = np.array(msg.data, dtype=np.float32).reshape(-1, 6)
             self.get_logger().info(f"[2D_PED] detection array shape: {arr.shape}")
-            self.get_logger().info(f"[2D_PED] detection data:\n{arr}")
         else:
             arr = np.empty((0, 6))
-            self.get_logger().info(f"[2D_PED] No detections received.")
 
         if ts_key not in self.detection_cache:
             self.detection_cache[ts_key] = {}
@@ -142,16 +156,16 @@ class RealTimeFusionNode(Node):
 
     def detection_3d_car_cb(self, msg: Float32MultiArrayStamped):
         ts_key = (msg.header.stamp.sec, msg.header.stamp.nanosec)
+
         arr_len = len(msg.data)
         self.get_logger().info(f"[3D_CAR] Received Float32MultiArrayStamped with {arr_len} floats, ts_key={ts_key}")
 
         if arr_len > 0:
+            # Typically 15 floats => reshape(-1,15)
             arr = np.array(msg.data, dtype=np.float32).reshape(-1, 15)
             self.get_logger().info(f"[3D_CAR] detection array shape: {arr.shape}")
-            self.get_logger().info(f"[3D_CAR] detection data:\n{arr}")
         else:
             arr = np.empty((0, 15))
-            self.get_logger().info(f"[3D_CAR] No detections received.")
 
         if ts_key not in self.detection_cache:
             self.detection_cache[ts_key] = {}
@@ -159,16 +173,15 @@ class RealTimeFusionNode(Node):
 
     def detection_3d_ped_cb(self, msg: Float32MultiArrayStamped):
         ts_key = (msg.header.stamp.sec, msg.header.stamp.nanosec)
+
         arr_len = len(msg.data)
         self.get_logger().info(f"[3D_PED] Received Float32MultiArrayStamped with {arr_len} floats, ts_key={ts_key}")
 
         if arr_len > 0:
             arr = np.array(msg.data, dtype=np.float32).reshape(-1, 15)
             self.get_logger().info(f"[3D_PED] detection array shape: {arr.shape}")
-            self.get_logger().info(f"[3D_PED] detection data:\n{arr}")
         else:
             arr = np.empty((0, 15))
-            self.get_logger().info(f"[3D_PED] No detections received.")
 
         if ts_key not in self.detection_cache:
             self.detection_cache[ts_key] = {}
@@ -178,6 +191,9 @@ class RealTimeFusionNode(Node):
     #  Find Nearest Detection Data
     # ============================================================
     def get_nearest_detection_data(self, ts_key, max_delta=0.05):
+        """
+        Find detection data from self.detection_cache within max_delta seconds of ts_key.
+        """
         def to_sec(key):
             return key[0] + key[1]*1e-9
 
@@ -193,11 +209,55 @@ class RealTimeFusionNode(Node):
                 best_key = k
 
         if best_key is not None and best_diff <= max_delta:
-            self.get_logger().info(f"Found detection data close to timestamp (diff={best_diff:.5f}s).")
+            self.get_logger().info(
+                f"Found detection data close to timestamp (diff={best_diff:.5f}s)."
+            )
             return self.detection_cache[best_key]
         else:
             self.get_logger().info("No detection data within max_delta seconds.")
             return {}
+
+    # ============================================================
+    #  Calibration
+    # ============================================================
+    def calibration_cb(self, msg: String):
+        self.get_logger().info("Calibration callback triggered!")
+        calib_str = msg.data
+        self.calib_data = self.parse_calib_string(calib_str)
+        self.get_logger().info("Received and parsed calibration data.")
+
+    def parse_calib_string(self, calib_str):
+        lines = calib_str.strip().split('\n')
+        calib_dict = {}
+        for line in lines:
+            line = line.strip()
+            if not line or ':' not in line:
+                continue
+            key, vals = line.split(':', 1)
+            key = key.strip()
+            vals = vals.strip()
+            num_strs = vals.split()
+            floats = [float(x) for x in num_strs]
+            if key.startswith('P'):
+                if len(floats) == 12:
+                    matrix = np.array(floats).reshape(3, 4)
+                    calib_dict[key] = matrix
+                else:
+                    calib_dict[key] = np.array(floats)
+            elif key.startswith('R_rect'):
+                if len(floats) == 9:
+                    matrix = np.array(floats).reshape(3, 3)
+                    calib_dict[key] = matrix
+                else:
+                    calib_dict[key] = np.array(floats)
+            else:
+                # e.g. Tr_velo_cam
+                if len(floats) == 12:
+                    matrix = np.array(floats).reshape(3, 4)
+                    calib_dict[key] = matrix
+                else:
+                    calib_dict[key] = np.array(floats)
+        return calib_dict
 
     # ============================================================
     #  Processing / Fusion
@@ -206,6 +266,9 @@ class RealTimeFusionNode(Node):
         if cv_img is None:
             self.get_logger().warn("No image to process.")
             return
+        #if self.calib_data is None:
+            #self.get_logger().warn("No calibration yet.")
+            #return
 
         combined_trackers = []
 
@@ -275,6 +338,9 @@ class RealTimeFusionNode(Node):
             for det in dets_2d:
                 try:
                     x1, y1, x2, y2 = map(int, det[1:5])
+                    self.get_logger().info(
+                        f"{cat} detection coords: x1={x1}, y1={y1}, x2={x2}, y2={y2}"
+                    )
                     cv2.rectangle(img_raw, (x1, y1), (x2, y2), color, 2)
                     cv2.putText(img_raw, label, (x1, max(0, y1 - 5)),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
@@ -293,6 +359,9 @@ class RealTimeFusionNode(Node):
     #  Publish 3D-Annotated Image
     # ============================================================
     def publish_3d_annotated_image(self, cv_img, trackers):
+        #if cv_img is None or self.calib_data is None:
+            #return
+
         annotated = cv_img.copy()
 
         for row in trackers:
@@ -314,13 +383,15 @@ class RealTimeFusionNode(Node):
         except Exception as e:
             self.get_logger().error(f"Failed to publish 3D-annotated image: {e}")
 
-    def show_image_with_boxes_3d(self, img, bbox3d_tmp, color=(255, 255, 255), label_str="", line_thickness=2):
+    def show_image_with_boxes_3d(self, img, bbox3d_tmp, color=(255,255,255), label_str="", line_thickness=2):
         corners_2d = self.project_3d_box(bbox3d_tmp)
         if corners_2d is not None and corners_2d.shape == (8, 2):
             img = self.draw_projected_box3d(img, corners_2d, color, line_thickness)
+            # Optionally add text label
+            # ...
         return img
 
-    def draw_projected_box3d(self, image, qs, color=(255, 255, 255), thickness=2):
+    def draw_projected_box3d(self, image, qs, color=(255,255,255), thickness=2):
         qs = qs.astype(int)
         for k in range(4):
             i, j = k, (k+1) % 4
@@ -332,12 +403,25 @@ class RealTimeFusionNode(Node):
         return image
 
     def project_3d_box(self, box3d_tmp):
+        #if 'P2' in self.calib_data:
+            #P = self.calib_data['P2']
+        #elif 'P0' in self.calib_data:
+            #P = self.calib_data['P0']
+        #else:
+            #self.get_logger().warn("No P0/P2 found in calib_data.")
+            #return None
+
         # Suppose (h, w, l, x, y, z, theta)
+        # Build corners, rotate, project, etc...
+        # For now, a placeholder
         corners_2d = np.zeros((8, 2), dtype=np.float32)
         return corners_2d
 
+    # ============================================================
+    #  Utility: ID + Color
+    # ============================================================
     def assign_unique_ids(self, category, ids):
-        category_mapping = {cat: idx + 1 for idx, cat in enumerate(self.cat_list)}
+        category_mapping = {cat: idx+1 for idx, cat in enumerate(self.cat_list)}
         prefix = category_mapping.get(category, 0) * 1000
         unique_ids = prefix + ids
         return unique_ids
