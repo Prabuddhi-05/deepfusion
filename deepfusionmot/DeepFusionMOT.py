@@ -15,7 +15,8 @@ class DeepFusionMOT:
         self.reorder_back = [6,5,4,0,1,2,3]
         self.min_frames = cfg[category].min_frames
 
-    def update(self, dets_3d_fusion, dets_2d_only, dets_3d_only, cfg, frame, seq_id):
+    #def update(self, dets_3d_fusion, dets_2d_only, dets_3d_only, cfg, frame, seq_id):
+    def update(self, dets_3d_fusion, dets_2d_only, dets_3d_only, cfg, frame):
         """
         The same logic that was in your original update() function.
         """

@@ -11,8 +11,9 @@ def generate_launch_description():
             executable='main_rt_fusion_node',
             name='deepfusionmot_fusion',
             output='screen',
-            emulate_tty=True
+            emulate_tty=True,
+            parameters=[{"use_sim_time": True}]  # <--- Add this line
         ),
-        # Possibly start other nodes or tools, e.g. a detection node, rviz, etc.
+        # You can optionally start other nodes/tools here (e.g., RViz).
     ])
 

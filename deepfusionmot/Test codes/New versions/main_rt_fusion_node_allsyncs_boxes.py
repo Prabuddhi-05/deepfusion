@@ -11,22 +11,18 @@ from cv_bridge import CvBridge
 
 # ROS messages
 from sensor_msgs.msg import Image, PointCloud2
-from std_msgs.msg import String, ColorRGBA
+from std_msgs.msg import String
 from my_msgs.msg import Float32MultiArrayStamped  # aggregated bounding boxes
 
 # For exact-time matching
 from message_filters import Subscriber, TimeSynchronizer
 
-# Markers for RViz
-from visualization_msgs.msg import Marker, MarkerArray
-
 # DeepFusionMOT imports
 from deepfusionmot.data_fusion import data_fusion
 from deepfusionmot.DeepFusionMOT import DeepFusionMOT
 from deepfusionmot.coordinate_transformation import (
-    compute_box_3dto2d,  # supports 'from_string'
+    compute_box_3dto2d,  # now supports 'from_string'
     convert_x1y1x2y2_to_tlwh,
-    roty  # we can reuse roty() or define a new corner method
 )
 from deepfusionmot.config import Config
 
@@ -40,8 +36,8 @@ def compute_color_for_id(track_id):
 
 def draw_projected_box3d(image, qs, color=(255, 255, 255), thickness=2):
     """
-    Draw a 3D bounding box in 2D image space (wireframe).
-    qs: (8,2) array of vertices for the 3D box corners.
+    Draw a 3D bounding box in the image.
+    qs: (8,2) array of vertices for the 3D box
     """
     if qs is not None and qs.shape[0] == 8:
         qs = qs.astype(np.int32)
@@ -66,10 +62,10 @@ def show_image_with_boxes_3d(img, bbox3d_tmp, calib_str,
     """
     corners_2d = compute_box_3dto2d(bbox3d_tmp, calib_str, from_string=True)
     if corners_2d is None:
-        print(f"[WARN] track_id={track_id} => behind camera or invalid box. No corners in image.")
+        print(f"[WARN] track_id={track_id} => behind camera or invalid box. No corners.")
         return img
 
-    # Draw the 3D box in 2D
+    # Draw the 3D box
     img = draw_projected_box3d(img, corners_2d, color=color, thickness=line_thickness)
 
     # Optionally, label near corner 4
@@ -83,29 +79,6 @@ def show_image_with_boxes_3d(img, bbox3d_tmp, calib_str,
 
     return img
 
-def compute_3d_corners_xyz(bbox3d):
-    """
-    Convert 3D box [h,w,l,x,y,z,theta] into an array of shape (8,3)
-    containing the 8 corners in 3D (in the same coordinate frame as x,y,z).
-    """
-    # Similar to your 'convert_3dbox_to_8corner' logic:
-    h, w, l, x, y, z, yaw = bbox3d
-    R = roty(yaw)
-
-    # define corners in local coordinate frame
-    x_corners = [l/2,  l/2, -l/2, -l/2,  l/2,  l/2, -l/2, -l/2]
-    y_corners = [0,    0,    0,    0,   -h,   -h,   -h,   -h]
-    z_corners = [w/2, -w/2, -w/2,  w/2,  w/2, -w/2, -w/2,  w/2]
-
-    # rotate and translate
-    corners = np.dot(R, np.vstack([x_corners, y_corners, z_corners]))  # (3,8)
-    corners[0, :] += x
-    corners[1, :] += y
-    corners[2, :] += z
-
-    corners_3d = corners.T  # shape (8,3)
-    return corners_3d
-
 class RealTimeFusionNode(Node):
     """
     A node that uses a single TimeSynchronizer for:
@@ -117,8 +90,8 @@ class RealTimeFusionNode(Node):
       - /detection_3d/pedestrian
     plus a calibration subscriber (/camera/calibration).
 
-    We also publish a MarkerArray with 3D bounding boxes so you can visualize
-    them in RViz on top of the point cloud.
+    It ensures that all trackers have the same column count
+    (e.g. 9 columns) by slicing after each tracker update.
     """
 
     def __init__(self, cfg):
@@ -166,11 +139,7 @@ class RealTimeFusionNode(Node):
         self.raw_detections_image_pub = self.create_publisher(Image, '/raw_detections_image', 10)
         self.annotated_image_pub      = self.create_publisher(Image, '/annotated_image', 10)
 
-        # **Publisher for 3D bounding box markers** in RViz
-        #self.marker_pub = self.create_publisher(MarkerArray, '/3d_bboxes', 10)
-        self.marker_pub = self.create_publisher(MarkerArray, '/boxes_3d', 10)
-
-        self.get_logger().info("RealTimeFusionNode: 6-topic TimeSync + calibration + marker publisher ready.")
+        self.get_logger().info("RealTimeFusionNode: 6-topic TimeSync + calibration subscriber ready.")
 
     def calib_callback(self, msg: String):
         """
@@ -222,15 +191,13 @@ class RealTimeFusionNode(Node):
 
         # Flatten all category trackers into one array for 3D drawing
         if cat_trackers_list:
-            combined_3d_trackers = np.vstack(cat_trackers_list)
+            # Make sure they all have the same shape
+            combined_3d_trackers = np.vstack(cat_trackers_list)  # no mismatch now
         else:
             combined_3d_trackers = np.empty((0,9))
 
-        # 1) Publish 2D annotated image with bounding boxes
+        # Publish 3D annotated image
         self.publish_3d_annotated_image(cv_img, combined_3d_trackers)
-
-        # 2) Also publish the 3D bounding boxes as markers in RViz
-        self.publish_3d_markers(combined_3d_trackers, stamp_sec, stamp_nsec)
 
     def parse_2d_detections(self, msg: Float32MultiArrayStamped, cat='Car'):
         if len(msg.data) > 0:
@@ -335,7 +302,8 @@ class RealTimeFusionNode(Node):
                 f"Tracking {cat}: took {elapsed:.4f}s, #tracks_out={len(trackers_out)}"
             )
 
-            # Some trackers might return >9 columns. We slice to 9 for consistency
+            # Example: If Car returns shape(*, 15) but Ped returns shape(*, 9),
+            # we'll slice to 9 columns for consistency.
             if trackers_out.size > 0:
                 cols = trackers_out.shape[1]
                 if cols > 9:
@@ -347,15 +315,13 @@ class RealTimeFusionNode(Node):
         return cat_trackers_list
 
     def publish_3d_annotated_image(self, cv_img, trackers):
-        """
-        Overlays the 3D bounding boxes in the 2D image plane, for debugging.
-        """
         if cv_img is None:
             return
         self.get_logger().info(f"publish_3d_annotated_image => trackers shape={trackers.shape}")
 
+        # If no calibration, skip
         if self.calib_str is None:
-            self.get_logger().warn("No calibration data => skipping 3D image overlay.")
+            self.get_logger().warn("No calibration data => skipping 3D draw.")
             return
 
         annotated = cv_img.copy()
@@ -374,14 +340,14 @@ class RealTimeFusionNode(Node):
             annotated = show_image_with_boxes_3d(
                 annotated,
                 bbox3d_tmp,
-                self.calib_str,
+                self.calib_str,  # pass the multi-line string
                 track_id=track_id,
                 color=color,
                 label_str=label_str,
                 line_thickness=2
             )
 
-        # Publish annotated image
+        # Publish annotated
         try:
             ann_msg = self.bridge.cv2_to_imgmsg(annotated, encoding='bgr8')
             ann_msg.header.stamp = self.get_clock().now().to_msg()
@@ -389,78 +355,6 @@ class RealTimeFusionNode(Node):
             self.annotated_image_pub.publish(ann_msg)
         except Exception as e:
             self.get_logger().error(f"Failed to publish 3D-annotated image: {e}")
-
-    def publish_3d_markers(self, trackers, stamp_sec, stamp_nsec):
-        """
-        Publishes MarkerArray to draw the bounding boxes as lines or cubes in 3D,
-        so you see them in RViz with the point cloud.
-        """
-        marker_array = MarkerArray()
-        header_frame_id = "velodyne"  # or "velodyne" or whatever frame your PC is in
-        # If your boxes are actually in camera coords, you might need a transform to lidar coords
-
-        # We'll give each bounding box a separate marker
-        now_sec = stamp_sec + stamp_nsec * 1e-9
-        current_time = self.get_clock().now().to_msg()
-
-        marker_id = 0
-        for row_idx, row in enumerate(trackers):
-            if row.size < 9:
-                continue
-
-            track_id = int(row[0])
-            h, w, l, x, y, z, theta = row[1:8]
-            color_bgr = compute_color_for_id(track_id)
-            # convert BGR -> RGBA
-            color_rgba = ColorRGBA(r=float(color_bgr[2])/255.0,
-                                   g=float(color_bgr[1])/255.0,
-                                   b=float(color_bgr[0])/255.0,
-                                   a=0.8)
-
-            # -- Option 1: Use LINE_LIST marker with corners
-            corners_3d = compute_3d_corners_xyz([h,w,l,x,y,z,theta])
-            # corners_3d is (8,3) in the same coordinate system as (x,y,z).
-            # If your (x,y,z) is in camera coords, you must transform to "lidar" coords.
-
-            # We'll define the marker as a set of line segments connecting corners
-            # Typical box edges: 0->1,1->2,2->3,3->0, 4->5,5->6,6->7,7->4, 0->4,1->5,2->6,3->7
-            edges = [
-                (0,1),(1,2),(2,3),(3,0),
-                (4,5),(5,6),(6,7),(7,4),
-                (0,4),(1,5),(2,6),(3,7)
-            ]
-
-            marker = Marker()
-            marker.header.stamp = current_time
-            marker.header.frame_id = header_frame_id
-            marker.ns = "3d_bboxes"
-            marker.id = marker_id
-            marker.type = Marker.LINE_LIST
-            marker.action = Marker.ADD
-            marker.lifetime = rclpy.duration.Duration(seconds=0, nanoseconds=0).to_msg()  # forever
-
-            marker.scale.x = 0.05  # line width
-            marker.color = color_rgba
-
-            # add the line segments
-            for (i0, i1) in edges:
-                p0 = corners_3d[i0]
-                p1 = corners_3d[i1]
-                marker.points.append(self.point_xyz(*p0))
-                marker.points.append(self.point_xyz(*p1))
-
-            marker_array.markers.append(marker)
-            marker_id += 1
-
-            # -- Option 2 (alternative): Publish a CUBE with pose = (x,y,z, orientation),
-            # scale = (l, h, w). But that requires rotating around the correct axis, etc.
-
-        # Publish the array
-        self.marker_pub.publish(marker_array)
-
-    def point_xyz(self, x, y, z):
-        from geometry_msgs.msg import Point
-        return Point(x=float(x), y=float(y), z=float(z))
 
 def main(args=None):
     config_file = '/home/prabuddhi/ros2_ws1/src/deepfusionmot/config/kitti_real_time.yaml'
