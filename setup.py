@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 import os
 from glob import glob
 
-package_name = 'deepfusionmot'
+package_name = 'deepfusionmot' # Package name
 
 setup(
     name=package_name,
