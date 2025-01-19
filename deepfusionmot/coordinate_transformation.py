@@ -200,7 +200,7 @@ def convert_3dbox_to_8corner(bbox3d_input):
 
 def compute_box_3dto2d(bbox3d_input, calib_data_or_file, from_string=False):
     """
-    Takes a 3D bounding box [h, w, l, x, y, z, theta] + calibration data (either file or string)
+    Takes a 3D bounding box [h, w, l, x, y, z, theta] + calibration data 
     and returns corners_2d: (8,2) array in image coords (or None if behind camera).
     """
     bbox3d = copy.copy(bbox3d_input)

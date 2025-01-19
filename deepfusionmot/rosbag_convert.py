@@ -30,7 +30,7 @@ def kitti_to_rosbag(base_path, output_bag_path):
     # You can adjust which KITTI sequences to process.
     # For example, here it processes only one sequence: seq_id in [0].
     # Adapt to your needs.
-    for seq_id in range(21):
+    for seq_id in range(29):
         seq_str = str(seq_id).zfill(4)
         bag_file_path = os.path.join(output_bag_path, f"{seq_str}.db3")
         metadata_file_path = os.path.join(output_bag_path, f"{seq_str}_metadata.yaml")
@@ -83,19 +83,19 @@ def kitti_to_rosbag(base_path, output_bag_path):
         point_cloud_dir = os.path.join(base_path, 'velodyne', seq_str)
 
         detection_2d_car_file = os.path.join(
-            '/home/prabuddhi/DeepFusionMOT/data/detections/2D/rrc/training/Car',
+            '/home/prabuddhi/DeepFusionMOT/data/detections/2D/rrc/testing/Car',
             f'{seq_str}.txt'
         )
         detection_2d_pedestrian_file = os.path.join(
-            '/home/prabuddhi/DeepFusionMOT/data/detections/2D/rrc/training/Pedestrian',
+            '/home/prabuddhi/DeepFusionMOT/data/detections/2D/rrc/testing/Pedestrian',
             f'{seq_str}.txt'
         )
         detection_3d_car_file = os.path.join(
-            '/home/prabuddhi/DeepFusionMOT/data/detections/3D/pointrcnn/training/Car',
+            '/home/prabuddhi/DeepFusionMOT/data/detections/3D/pointrcnn/testing/Car',
             f'{seq_str}.txt'
         )
         detection_3d_pedestrian_file = os.path.join(
-            '/home/prabuddhi/DeepFusionMOT/data/detections/3D/pointrcnn/training/Pedestrian',
+            '/home/prabuddhi/DeepFusionMOT/data/detections/3D/pointrcnn/testing/Pedestrian',
             f'{seq_str}.txt'
         )
 
@@ -300,8 +300,8 @@ def write_odometry(writer, odo_file, topic, timestamp_ns, frame_idx):
 def main():
     # Example usage:
     kitti_to_rosbag(
-        base_path='/home/prabuddhi/DeepFusionMOT_test/data/kitti/tracking/training',
-        output_bag_path='/home/prabuddhi/ros2_ws1/src/data/training_new_det_2'
+        base_path='/home/prabuddhi/DeepFusionMOT_test/data/kitti/tracking/testing',
+        output_bag_path='/home/prabuddhi/ros2_ws1/src/data/kitti/tracking/testing'
     )
 
 
