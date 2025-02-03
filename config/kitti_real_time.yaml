@@ -1,8 +1,8 @@
 dataset: 'kitti'
 
 #cat_list: ['Car']
-cat_list: ['Pedestrian']
-#cat_list: ['Car', 'Pedestrian']
+#cat_list: ['Pedestrian']
+cat_list: ['Car', 'Pedestrian']
 
 
 Car:

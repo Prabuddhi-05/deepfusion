@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# Standard Python Libraries
 import os
 import math
 import numpy as np
@@ -7,7 +6,6 @@ import cv2
 import time
 import sys
 
-# ROS2 Libraries
 import rclpy
 from rclpy.node import Node
 from cv_bridge import CvBridge
@@ -18,10 +16,10 @@ from std_msgs.msg import String, ColorRGBA  # ColorRGBA - for markers
 from my_msgs.msg import Float32MultiArrayStamped  # Customized message type
 
 # For exact-time matching
-from message_filters import Subscriber, TimeSynchronizer # Subscribe to multiple topics and synchronize their messages
+from message_filters import Subscriber, TimeSynchronizer
 
 # Markers for RViz
-from visualization_msgs.msg import Marker, MarkerArray # Marker - for a single object, MarkerArray - for multiple objects
+from visualization_msgs.msg import Marker, MarkerArray
 
 # DeepFusionMOT imports
 from deepfusionmot.data_fusion import data_fusion
@@ -30,7 +28,7 @@ from deepfusionmot.coordinate_transformation import (
     compute_box_3dto2d,  # Projects 3D bounding boxes onto the 2D image plane
     convert_x1y1x2y2_to_tlwh,
     roty,  # Computes 3D rotation matrices
-    TransformationKitti,  # For transformation between camera -> LiDARA
+    TransformationKitti,  # We'll use this to transform 3D corners from camera to velodyne
 )
 from deepfusionmot.config import Config  # Configuration loader
 
@@ -169,15 +167,10 @@ class RealTimeFusionNode(Node):  # ROS2 Node
             10
         )
 
-        # Publishers for images
+        # Publishers
         self.raw_detections_image_pub = self.create_publisher(Image, '/raw_detections_image', 10)
         self.annotated_image_pub = self.create_publisher(Image, '/annotated_image', 10)
-
-        # Publishers for 3D bounding box markers in RViz
         self.marker_pub = self.create_publisher(MarkerArray, '/boxes_3d', 10)
-
-        # NEW: Publisher for raw 3D detections in RViz
-        self.raw_detections_3d_pub = self.create_publisher(MarkerArray, '/raw_detections_3d', 10)
 
         self.get_logger().info("RealTimeFusionNode: 6-topic TimeSync")
 
@@ -232,11 +225,8 @@ class RealTimeFusionNode(Node):  # ROS2 Node
             }
         }
 
-        # Publishes 2D bounding boxes (raw, untracked)
+        # Publishes 2D bounding boxes
         self.publish_raw_detections_image(cv_img, detection_dict)
-
-        # NEW: Publish 3D bounding boxes (raw, untracked) in the point cloud frame
-        self.publish_raw_detections_3d_markers(detection_dict, stamp_sec, stamp_nsec)
 
         # Fusion + Tracking
         cat_trackers_list = self.fuse_and_track(cv_img, detection_dict)
@@ -250,7 +240,7 @@ class RealTimeFusionNode(Node):  # ROS2 Node
         # Annotated image with 3D bounding boxes
         self.publish_3d_annotated_image(cv_img, combined_3d_trackers)
 
-        # Publishes the 3D bounding boxes as markers in RViz (for tracked objects)
+        # Publishes the 3D bounding boxes as markers in RViz
         self.publish_3d_markers(combined_3d_trackers, stamp_sec, stamp_nsec)
 
     # ---------------------------
@@ -311,80 +301,6 @@ class RealTimeFusionNode(Node):  # ROS2 Node
         except Exception as e:
             self.get_logger().error(f"Failed to publish raw detection image: {e}")
 
-    # --------------------------------------------------
-    #   NEW: Publish 3D bounding boxes for raw detections
-    # --------------------------------------------------
-    def publish_raw_detections_3d_markers(self, detection_dict, stamp_sec, stamp_nsec):
-        """
-        Publishes a MarkerArray for raw/untracked 3D bounding boxes in 'velodyne' frame,
-        analogous to the 2D raw detections overlay.
-        """
-        marker_array = MarkerArray()
-        header_frame_id = "velodyne"
-        current_time = self.get_clock().now().to_msg()
-
-        marker_id = 0
-        edges = [
-            (0, 1), (1, 2), (2, 3), (3, 0),
-            (4, 5), (5, 6), (6, 7), (7, 4),
-            (0, 4), (1, 5), (2, 6), (3, 7)
-        ]
-
-        for cat in self.cat_list:
-            arr_3d = detection_dict[cat]['3d']
-            if arr_3d.shape[0] == 0:
-                continue
-
-            # Pick a color for the category, same as 2D raw
-            # Car => green, Ped => blue
-            if cat == 'Car':
-                color_rgba = ColorRGBA(r=0.0, g=1.0, b=0.0, a=0.8)
-            else:  # Pedestrian
-                color_rgba = ColorRGBA(r=0.0, g=0.0, b=1.0, a=0.8)
-
-            for det_idx, row in enumerate(arr_3d):
-                # row[7..14] = [h, w, l, x, y, z, theta]
-                h, w, l, x, y, z, theta = row[7:14]
-                corners_3d_cam = compute_3d_corners_xyz([h, w, l, x, y, z, theta])
-
-                # Transform from camera coords to velodyne coords
-                if self.calib_kitti is not None:
-                    try:
-                        corners_3d_velo = self.calib_kitti.project_rect_to_lidar(corners_3d_cam)
-                    except Exception as e:
-                        self.get_logger().error(f"[raw_3d] Transform cam->velo failed: {e}")
-                        corners_3d_velo = corners_3d_cam
-                else:
-                    corners_3d_velo = corners_3d_cam
-
-                # If shape is (8,4), slice out x,y,z
-                if corners_3d_velo.shape[1] == 4:
-                    corners_3d_velo = corners_3d_velo[:, :3]
-
-                # Build a line-list marker for this detection
-                marker = Marker()
-                marker.header.stamp = current_time
-                marker.header.frame_id = header_frame_id
-                marker.ns = "3d_raw_detections"
-                marker.id = marker_id
-                marker.type = Marker.LINE_LIST
-                marker.action = Marker.ADD
-                marker.lifetime = rclpy.duration.Duration(seconds=0, nanoseconds=0).to_msg()  # forever
-
-                marker.scale.x = 0.03  # line width
-                marker.color = color_rgba
-
-                for (i0, i1) in edges:
-                    p0 = corners_3d_velo[i0]
-                    p1 = corners_3d_velo[i1]
-                    marker.points.append(self.point_xyz(*p0))
-                    marker.points.append(self.point_xyz(*p1))
-
-                marker_array.markers.append(marker)
-                marker_id += 1
-
-        self.raw_detections_3d_pub.publish(marker_array)
-
     # ---------------------------
     #   Fusion + Tracking
     # ---------------------------
@@ -419,12 +335,10 @@ class RealTimeFusionNode(Node):  # ROS2 Node
             dets_2d_frame = arr_2d[:, 1:5] if n2d else np.empty((0, 4))
 
             # Data fusion
-            fused_3d, only3d, only2d = data_fusion(
-                dets_3d_camera,
-                dets_2d_frame,
-                dets_3dto2d_image,
-                additional_info
-            )
+            fused_3d, only3d, only2d = data_fusion(dets_3d_camera,
+                                                   dets_2d_frame,
+                                                   dets_3dto2d_image,
+                                                   additional_info)
             if len(only2d) > 0:
                 only2d_tlwh = np.array([convert_x1y1x2y2_to_tlwh(b) for b in only2d])
             else:
@@ -495,12 +409,12 @@ class RealTimeFusionNode(Node):  # ROS2 Node
             self.get_logger().error(f"Failed to publish 3D-annotated image: {e}")
 
     # ---------------------------
-    #   Publish 3D Markers (TRACKED)
+    #   Publish 3D Markers
     # ---------------------------
     def publish_3d_markers(self, trackers, stamp_sec, stamp_nsec):
         """
-        Publishes MarkerArray to draw bounding boxes (TRACKED) as line segments in 3D,
-        in the 'velodyne' frame.
+        Publishes MarkerArray to draw the bounding boxes as line segments in 3D
+        in the 'velodyne' frame. We must transform corners from camera -> velodyne.
         """
         marker_array = MarkerArray()
         header_frame_id = "velodyne"
