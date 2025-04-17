@@ -1,6 +1,6 @@
 import numpy as np
-from deepfusionmot.matching import linear_assignment
-from deepfusionmot.cost_function import iou_2d
+from deepfusion.matching import linear_assignment
+from deepfusion.cost_function import iou_2d
 
 def data_fusion(detections_3D_camera, detection_2D, detection_3Dto2D, additional_info):
     """

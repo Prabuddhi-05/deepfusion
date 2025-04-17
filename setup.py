@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 import os
 from glob import glob
 
-package_name = 'deepfusionmot' # Package name
+package_name = 'deepfusion' # Package name
 
 setup(
     name=package_name,
@@ -23,22 +23,22 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-        'data_fusion = deepfusionmot.data_fusion:main',
-        'DeepFusionMOT = deepfusionmot.DeepFusionMOT:main',
-        'main_rt_fusion_node = deepfusionmot.main_rt_fusion_node:main',
-        'tracker = deepfusionmot.tracker:main',
-        'calibration = deepfusionmot.calibration:main',
-        'coordinate_transformation = deepfusionmot.coordinate_transformation:main',
-        'cost_function = deepfusionmot.cost_function:main',
-        'kalman_filter_2d = deepfusionmot.kalman_filter_2d:main',
-        'kalman_filter_3d = deepfusionmot.kalman_filter_3d:main',
-        'matching = deepfusionmot.matching:main',
-        'track_2d = deepfusionmot.track_2d:main',
-        'track_3d = deepfusionmot.track_3d:main',
-        'kitti_oxts = deepfusionmot.kitti_oxts:main',
-        'file = deepfusionmot.file:main',
-        'config = deepfusionmot.config:main',
-        'rosbag_convert = deepfusionmot.rosbag_convert:main',
+        'data_fusion = deepfusion.data_fusion:main',
+        'DeepFusionMOT = deepfusion.DeepFusionMOT:main',
+        'main_rt_fusion_node = deepfusion.main_rt_fusion_node:main',
+        'tracker = deepfusion.tracker:main',
+        'calibration = deepfusion.calibration:main',
+        'coordinate_transformation = deepfusion.coordinate_transformation:main',
+        'cost_function = deepfusion.cost_function:main',
+        'kalman_filter_2d = deepfusion.kalman_filter_2d:main',
+        'kalman_filter_3d = deepfusion.kalman_filter_3d:main',
+        'matching = deepfusion.matching:main',
+        'track_2d = deepfusion.track_2d:main',
+        'track_3d = deepfusion.track_3d:main',
+        'kitti_oxts = deepfusion.kitti_oxts:main',
+        'file = deepfusion.file:main',
+        'config = deepfusion.config:main',
+        'rosbag_convert = deepfusion.rosbag_convert:main',
         ],
     },
 )

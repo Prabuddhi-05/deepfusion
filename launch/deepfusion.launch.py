@@ -7,13 +7,12 @@ from launch_ros.actions import Node
 def generate_launch_description():
     return LaunchDescription([
         Node(
-            package='deepfusionmot',
+            package='deepfusion',
             executable='main_rt_fusion_node',
-            name='deepfusionmot_fusion',
+            name='deepfusion_fusion',
             output='screen',
             emulate_tty=True,
-            parameters=[{"use_sim_time": True}]  # <--- Add this line
+            parameters=[{"use_sim_time": True}]  
         ),
-        # You can optionally start other nodes/tools here (e.g., RViz).
     ])
 

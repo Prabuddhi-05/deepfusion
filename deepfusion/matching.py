@@ -1,7 +1,7 @@
 # -*-coding:utf-8-*
 # author: wangxy
 import numpy as np
-from deepfusionmot.cost_function import iou_2d, giou_2d, sdiou_2d, diou_2d, giou_3d, dist_3d
+from deepfusion.cost_function import iou_2d, giou_2d, sdiou_2d, diou_2d, giou_3d, dist_3d
 
 
 def linear_assignment(cost_matrix):
