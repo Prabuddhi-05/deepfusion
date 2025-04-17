@@ -24,7 +24,6 @@ This ROS 2 node performs **real-time fusion** of 2D and 3D detections using sync
 | `/fusion/fused_3d`       | `Float32MultiArrayStamped`    | Fused 3D bounding boxes                    |
 | `/fusion/only_3d`        | `Float32MultiArrayStamped`    | 3D detections not matched with 2D         |
 | `/fusion/only_2d`        | `Float32MultiArrayStamped`    | 2D detections not matched with 3D         |
-| `/raw_detections_image`  | `sensor_msgs/Image`           | Image with raw 2D bounding boxes overlayed|
 ---
 
 ## Configuration: `kitti_real_time.yaml`
