@@ -30,10 +30,6 @@ This ROS 2 node performs **real-time fusion** of 2D and 3D detections using sync
 
 You can configure which object categories are used for fusion using the `cat_list` parameter in the config file `kitti_real_time.yaml`.
 
-```
-deepfusion/config/kitti_real_time.yaml
-```
-
 Example:
 ```yaml
 dataset: 'kitti'
